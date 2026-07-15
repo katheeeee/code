@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador AFND</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f4;
+    color: #1a1a18;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 1.75rem;
+    color: #1a1a18;
+    letter-spacing: -.01em;
+  }
+
+  .card {
+    background: #fff;
+    border: 0.5px solid #d1d0c9;
+    border-radius: 14px;
+    padding: 1.75rem;
+    width: 100%;
+    max-width: 700px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+
+  svg { display: block; width: 100%; }
+
+  /* Animations */
+  @keyframes glow-pulse {
+    0%,100% { opacity: .5; r: 46; }
+    50%      { opacity: 1;  r: 50; }
+  }
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -24; }
+  }
+  @keyframes token-pop {
+    0%   { transform: scale(0); opacity: 0; }
+    60%  { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes result-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Tape */
+  #tape-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    min-height: 46px;
+    margin: .75rem 0 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .tok {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 0.5px solid #d1d0c9;
+    color: #5f5e5a;
+    background: #f5f5f4;
+    transition: all .3s ease;
+    opacity: 0;
+  }
+  .tok.current {
+    background: #e6f1fb;
+    color: #185fa5;
+    border-color: #3B8BD4;
+    transform: scale(1.18);
+    opacity: 1 !important;
+  }
+  .tok.done {
+    background: #f5f5f4;
+    color: #b4b2a9;
+    border-color: #e0dfd8;
+    opacity: .45 !important;
+    transform: scale(1);
+  }
+  .tok.pending { opacity: 1; }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  input[type="text"] {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    letter-spacing: .12em;
+    text-align: center;
+    width: 150px;
+    height: 36px;
+    border: 0.5px solid #b4b2a9;
+    border-radius: 8px;
+    padding: 0 .75rem;
+    background: #fff;
+    color: #1a1a18;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: #3B8BD4; }
+
+  button {
+    height: 36px;
+    padding: 0 1rem;
+    border: 0.5px solid #b4b2a9;
+    border-radius: 8px;
+    background: transparent;
+    color: #1a1a18;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  button:hover  { background: #f0efe8; }
+  button:active { transform: scale(.97); }
+
+  /* Result */
+  #result-box {
+    text-align: center;
+    min-height: 36px;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    border-radius: 8px;
+    padding: .45rem 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0 auto;
+    transition: opacity .3s;
+  }
+  #result-box.accept {
+    background: #eaf3de;
+    color: #27500a;
+    border: 0.5px solid #97c459;
+    animation: result-in .3s ease forwards;
+  }
+  #result-box.reject {
+    background: #fcebeb;
+    color: #791f1f;
+    border: 0.5px solid #f09595;
+    animation: result-in .3s ease forwards;
+  }
+  #result-wrap { display: flex; justify-content: center; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #5f5e5a;
+  }
+  .legend-dot {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+  }
+
+  /* SVG state classes (set via JS) */
+  .state-fill-default  { fill: #f5f5f4; }
+  .state-fill-active   { fill: #e6f1fb; }
+  .state-fill-accept   { fill: #eaf3de; }
+  .state-fill-reject   { fill: #fcebeb; }
+
+  .state-stroke-default { stroke: #888780; stroke-width: 1.5px; }
+  .state-stroke-active  { stroke: #3B8BD4; stroke-width: 2.5px; }
+  .state-stroke-accept  { stroke: #639922; stroke-width: 2.5px; }
+  .state-stroke-reject  { stroke: #E24B4A; stroke-width: 2.5px; }
+
+  @media (prefers-color-scheme: dark) {
+    body { background: #1e1e1c; color: #e0dfd8; }
+    .card { background: #2c2c2a; border-color: #444441; }
+    h1 { color: #e0dfd8; }
+    input[type="text"] { background: #2c2c2a; color: #e0dfd8; border-color: #5f5e5a; }
+    button { color: #e0dfd8; border-color: #5f5e5a; }
+    button:hover { background: #3d3d3a; }
+    .tok { background: #3d3d3a; color: #b4b2a9; border-color: #5f5e5a; }
+    .tok.pending { color: #d3d1c7; }
+    .state-fill-default { fill: #3d3d3a; }
+    svg text { fill: #d3d1c7; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Simulador gráfico AFND</h1>
+
+<div class="card">
+
+  <!-- Automaton SVG -->
+  <svg viewBox="0 0 640 290" role="img" aria-label="Diagrama del autómata finito no determinista">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- Entry arrow -->
+    <line x1="28" y1="145" x2="96" y2="145" stroke="#888780" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="28" y="133" font-size="11" fill="#888780" font-family="inherit">inicio</text>
+
+    <!-- q0 self-loop -->
+    <path id="arrow-q0-self"
+      d="M118 105 C118 52, 185 52, 185 105"
+      fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="151" y="48" text-anchor="middle" font-size="12" fill="#888780" font-family="inherit">0, 1</text>
+
+    <!-- q0 → q1 -->
+    <path id="arrow-q0-q1"
+      d="M198 145 L302 145"
+      fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="250" y="134" text-anchor="middle" font-size="12" fill="#888780" font-family="inherit">0</text>
+
+    <!-- q1 → q2 -->
+    <path id="arrow-q1-q2"
+      d="M378 145 L462 145"
+      fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="420" y="134" text-anchor="middle" font-size="12" fill="#888780" font-family="inherit">1</text>
+
+    <!-- Glow rings (animated when active) -->
+    <circle id="ring-q0" cx="148" cy="145" r="46" fill="none" stroke="transparent" stroke-width="3"/>
+    <circle id="ring-q1" cx="340" cy="145" r="46" fill="none" stroke="transparent" stroke-width="3"/>
+    <circle id="ring-q2" cx="510" cy="145" r="46" fill="none" stroke="transparent" stroke-width="3"/>
+
+    <!-- q0 -->
+    <circle id="circle-q0" cx="148" cy="145" r="42" class="state-fill-default state-stroke-default" style="transition:fill .35s,stroke .35s,filter .35s"/>
+    <text id="label-q0" x="148" y="150" text-anchor="middle" font-size="14" font-weight="500" font-family="inherit" fill="#1a1a18">q0</text>
+
+    <!-- q1 -->
+    <circle id="circle-q1" cx="340" cy="145" r="42" class="state-fill-default state-stroke-default" style="transition:fill .35s,stroke .35s,filter .35s"/>
+    <text id="label-q1" x="340" y="150" text-anchor="middle" font-size="14" font-weight="500" font-family="inherit" fill="#1a1a18">q1</text>
+
+    <!-- q2 (final — double circle) -->
+    <circle id="circle-q2" cx="510" cy="145" r="42" class="state-fill-default state-stroke-default" style="transition:fill .35s,stroke .35s,filter .35s"/>
+    <circle cx="510" cy="145" r="34" fill="none" stroke="#888780" stroke-width="1" id="circle-q2-inner"/>
+    <text id="label-q2" x="510" y="150" text-anchor="middle" font-size="14" font-weight="500" font-family="inherit" fill="#1a1a18">q2</text>
+    <text x="510" y="205" text-anchor="middle" font-size="11" fill="#888780" font-family="inherit">estado final</text>
+  </svg>
+
+  <!-- Token tape -->
+  <div id="tape-row"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input id="input-str" type="text" placeholder="Ej: 01011" maxlength="18">
+    <button onclick="startSim()">Simular</button>
+    <button onclick="resetSim()" style="opacity:.7">Reiniciar</button>
+  </div>
+
+  <!-- Result -->
+  <div id="result-wrap">
+    <div id="result-box"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#e6f1fb;border:1px solid #3B8BD4"></div> Estado activo
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#eaf3de;border:1px solid #97c459"></div> Aceptado
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#fcebeb;border:1px solid #f09595"></div> Rechazado
+    </div>
+  </div>
+
+</div>
+
+<script>
+const DELAY = 750;
+let simTimeout = null;
+
+const states = ['q0', 'q1', 'q2'];
+
+function getEl(id) { return document.getElementById(id); }
+
+// ── Arrow references ──────────────────────────────────────────
+const arrows = {
+  self:  getEl('arrow-q0-self'),
+  q0q1:  getEl('arrow-q0-q1'),
+  q1q2:  getEl('arrow-q1-q2'),
+};
+
+// ── State coloring ────────────────────────────────────────────
+const STYLES = {
+  default: { fill: '#f5f5f4', stroke: '#888780', sw: 1.5, shadow: '', ringStroke: 'transparent', ringAnim: '' },
+  active:  { fill: '#e6f1fb', stroke: '#3B8BD4', sw: 2.5, shadow: 'drop-shadow(0 0 8px rgba(59,139,212,.5))', ringStroke: '#3B8BD4', ringAnim: 'glow-pulse 1.2s ease-in-out infinite' },
+  accept:  { fill: '#eaf3de', stroke: '#639922', sw: 2.5, shadow: 'drop-shadow(0 0 8px rgba(99,153,34,.45))', ringStroke: '#639922', ringAnim: 'glow-pulse 1s ease-in-out infinite' },
+  reject:  { fill: '#fcebeb', stroke: '#E24B4A', sw: 2.5, shadow: '', ringStroke: 'transparent', ringAnim: '' },
+};
+
+function applyStateStyles(activeSet, mode) {
+  states.forEach(s => {
+    const circle = getEl('circle-' + s);
+    const ring   = getEl('ring-' + s);
+    const style  = (activeSet.has(s)) ? STYLES[mode] : STYLES.default;
+    circle.style.fill   = style.fill;
+    circle.style.stroke = style.stroke;
+    circle.style.strokeWidth = style.sw + 'px';
+    circle.style.filter = style.shadow;
+    ring.style.stroke    = style.ringStroke;
+    ring.style.animation = style.ringAnim;
+  });
+}
+
+// ── Arrow animation ───────────────────────────────────────────
+function resetArrows() {
+  Object.values(arrows).forEach(a => {
+    a.style.stroke          = '#888780';
+    a.style.strokeDasharray = '0';
+    a.style.animation       = '';
+  });
+}
+
+function animateArrow(el) {
+  el.style.stroke          = '#3B8BD4';
+  el.style.strokeDasharray = '6 6';
+  el.style.animation       = 'dash-flow .65s linear infinite';
+}
+
+function highlightArrows(from, sym, to) {
+  resetArrows();
+  if (from.has('q0') && to.has('q0'))  animateArrow(arrows.self);
+  if (from.has('q0') && to.has('q1') && sym === '0') animateArrow(arrows.q0q1);
+  if (from.has('q1') && to.has('q2') && sym === '1') animateArrow(arrows.q1q2);
+}
+
+// ── Token tape ────────────────────────────────────────────────
+function buildTape(str) {
+  const tape = getEl('tape-row');
+  tape.innerHTML = '';
+  for (let i = 0; i < str.length; i++) {
+    const el = document.createElement('div');
+    el.id        = 'tok-' + i;
+    el.className = 'tok';
+    el.textContent = str[i];
+    tape.appendChild(el);
+    // staggered pop-in
+    setTimeout(() => {
+      el.classList.add('pending');
+      el.style.animation = 'token-pop .25s cubic-bezier(.34,1.56,.64,1) forwards';
+    }, i * 70);
+  }
+}
+
+function updateTape(idx, total) {
+  for (let i = 0; i < total; i++) {
+    const el = getEl('tok-' + i);
+    if (!el) continue;
+    el.classList.remove('current','done','pending');
+    if (i < idx)       el.classList.add('done');
+    else if (i === idx) el.classList.add('current');
+    else               el.classList.add('pending');
+  }
+}
+
+// ── Result box ────────────────────────────────────────────────
+function showResult(accepted) {
+  const box = getEl('result-box');
+  box.className = '';
+  box.style.opacity = '0';
+  setTimeout(() => {
+    box.className = accepted ? 'accept' : 'reject';
+    box.innerHTML  = accepted
+      ? '&#10003; Cadena aceptada'
+      : '&#10007; Cadena rechazada';
+    box.style.opacity = '1';
+  }, 120);
+}
+
+// ── AFND transition function ──────────────────────────────────
+function delta(states, sym) {
+  const next = new Set();
+  states.forEach(s => {
+    if (s === 'q0') {
+      if (sym === '0') { next.add('q0'); next.add('q1'); }
+      if (sym === '1') { next.add('q0'); }
+    }
+    if (s === 'q1') {
+      if (sym === '1') { next.add('q2'); }
+    }
+    // q2 has no outgoing transitions
+  });
+  return next;
+}
+
+// ── Simulation ────────────────────────────────────────────────
+function resetAll() {
+  if (simTimeout) { clearTimeout(simTimeout); simTimeout = null; }
+  resetArrows();
+  applyStateStyles(new Set(), 'default');
+  getEl('tape-row').innerHTML = '';
+  const box = getEl('result-box');
+  box.className = '';
+  box.style.opacity = '0';
+  box.innerHTML = '';
+}
+
+function resetSim() {
+  resetAll();
+  getEl('input-str').value = '';
+}
+
+function startSim() {
+  resetAll();
+  const str = getEl('input-str').value.trim();
+  if (!str || !/^[01]+$/.test(str)) {
+    const box = getEl('result-box');
+    box.className = 'reject';
+    box.innerHTML = 'Ingresa solo caracteres 0 y 1';
+    box.style.opacity = '1';
+    return;
+  }
+
+  buildTape(str);
+
+  let current = new Set(['q0']);
+  let idx = 0;
+
+  // Highlight initial state after tape builds
+  setTimeout(() => applyStateStyles(current, 'active'), 250);
+
+  function step() {
+    if (idx >= str.length) {
+      const accepted = current.has('q2');
+      applyStateStyles(current, accepted ? 'accept' : 'reject');
+      resetArrows();
+      showResult(accepted);
+      return;
+    }
+    const sym  = str[idx];
+    const prev = new Set(current);
+    const next = delta(current, sym);
+
+    updateTape(idx, str.length);
+    highlightArrows(prev, sym, next);
+    current = next;
+    applyStateStyles(current, 'active');
+    idx++;
+    simTimeout = setTimeout(step, DELAY);
+  }
+
+  simTimeout = setTimeout(step, 500);
+}
+
+// Enter key shortcut
+getEl('input-str').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startSim();
+});
+</script>
+</body>
+</html>
